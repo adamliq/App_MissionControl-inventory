@@ -55,12 +55,15 @@ find "$STAGE_DIR" -name '*.pyc' -delete
 find "$STAGE_DIR" -name '.DS_Store' -delete
 find "$STAGE_DIR" -name '.git*' -delete
 
-log "Validating Python syntax"
-find "$STAGE_DIR/bin" -name '*.py' -print0 | xargs -0 -n1 python3 -m py_compile
+PY_REQUIRED="python3.13"
+command -v "$PY_REQUIRED" >/dev/null 2>&1 || PY_REQUIRED="python3"
+
+log "Validating Python syntax ($PY_REQUIRED)"
+find "$STAGE_DIR/bin" -name '*.py' -print0 | xargs -0 -n1 "$PY_REQUIRED" -m py_compile
 log "  Python syntax OK"
 
-log "Validating bundled splunklib is importable"
-PYTHONPATH="$STAGE_DIR/bin" python3 -c "from splunklib.searchcommands import GeneratingCommand" \
+log "Validating bundled splunklib is importable ($PY_REQUIRED)"
+PYTHONPATH="$STAGE_DIR/bin" "$PY_REQUIRED" -c "from splunklib.searchcommands import GeneratingCommand" \
   || fail "bundled splunklib is missing or broken -- mcquery.py would fail at runtime"
 log "  splunklib import OK"
 

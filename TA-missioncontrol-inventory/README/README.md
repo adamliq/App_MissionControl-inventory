@@ -137,4 +137,20 @@ search commands that import it must carry their own copy. See
 
 - Static icon assets are included under `static/` for Splunk Web and AppInspect visibility checks.
 - `default/app.conf` sets `[package] check_for_updates = true` so update checking is not disabled.
+- `bin/commands.conf` declares `python.required = 3.13` to match the bundled Splunk SDK for Python (3.0.0), which requires Python 3.13.
+- `metadata/default.meta` grants write access to both `admin` and `sc_admin` so the app's knowledge objects are manageable by Splunk Cloud administrators, who hold `sc_admin` rather than `admin`.
+
+## AppInspect status
+
+Validated with `splunk-appinspect` 4.2.1, `--mode precert` (all tags, including `cloud`): 0 errors, 0 failures, 0 future-failures. Two informational warnings remain and are expected for this app:
+
+- `check_for_python_script_existence` — generic notice that Python files exist; `bin/mcquery.py` and the bundled `splunklib` are Python 3-only, which the check cannot infer automatically.
+- `check_for_updates_disabled` — only applies to apps that will stay private and never reach Splunkbase; since `check_for_updates = true` is correct for a Splunkbase-listed app, this warning does not apply to the intended distribution path.
+
+Run `./build.sh` to produce the package, then validate with:
+
+```sh
+pip install splunk-appinspect
+splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.0.0.spl --mode precert --max-messages all
+```
 
