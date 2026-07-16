@@ -1,0 +1,13 @@
+Copyright (c) 2026 Adam Liquorish
+
+This app is distributed under the Splunk End User License Agreement for
+Third-Party Content, the standard license option presented during app
+submission on Splunkbase (https://splunkbase.splunk.com). The authoritative
+text of that agreement is provided by Splunk, Inc. at submission time and
+supersedes this file; this file is a placeholder pointer to that agreement
+and is not a substitute for it.
+
+This app bundles the Splunk SDK for Python ("splunklib"), Copyright (c)
+2011-2024 Splunk, Inc., licensed separately under the Apache License,
+Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0). See
+bin/splunklib/__init__.py for the upstream copyright notice.

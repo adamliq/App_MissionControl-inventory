@@ -1,0 +1,4 @@
+<nav search_view="search">
+  <view name="missioncontrol_inventory" default="true" />
+  <view name="search" />
+</nav>
