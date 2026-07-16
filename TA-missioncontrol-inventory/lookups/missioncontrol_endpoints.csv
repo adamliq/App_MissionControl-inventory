@@ -1,0 +1,5 @@
+collection,endpoint,enabled,page_size,sort,order,default_params,result_path,id_field,name_field,description
+soar_apps,/servicesNS/-/missioncontrol/v1/soar/app,true,100,name,asc,configured=true&pretty=true,items,id,name,Configured Mission Control SOAR apps
+soar_assets,/servicesNS/-/missioncontrol/v1/soar/asset,false,100,name,asc,pretty=true,items,id,name,Example SOAR assets endpoint - enable after validating path
+soar_playbooks,/servicesNS/-/missioncontrol/v1/soar/playbook,false,100,name,asc,pretty=true,items,id,name,Example SOAR playbooks endpoint - enable after validating path
+soar_automation,/servicesNS/-/missioncontrol/v1/soar/automation,false,100,name,asc,pretty=true,items,id,name,Example SOAR automation endpoint - enable after validating path

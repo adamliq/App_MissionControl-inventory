@@ -1,0 +1,70 @@
+<form version="1.1" theme="light">
+  <label>Mission Control Inventory</label>
+  <description>Lookup-driven inventory for local Mission Control / SOAR endpoints. Enable endpoint rows in missioncontrol_endpoints.csv as required.</description>
+  <fieldset submitButton="true" autoRun="false">
+    <input type="dropdown" token="collection_tok" searchWhenChanged="false">
+      <label>Collection</label>
+      <choice value="*">All enabled endpoints</choice>
+      <default>*</default>
+      <fieldForLabel>collection</fieldForLabel>
+      <fieldForValue>collection</fieldForValue>
+      <search>
+        <query>| inputlookup missioncontrol_endpoints.csv | table collection | sort collection</query>
+      </search>
+    </input>
+    <input type="radio" token="include_raw_tok" searchWhenChanged="false">
+      <label>Include raw JSON</label>
+      <choice value="true">Yes</choice>
+      <choice value="false">No</choice>
+      <default>false</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Configured endpoint registry</title>
+      <table>
+        <search>
+          <query>| inputlookup missioncontrol_endpoints.csv | table collection enabled endpoint page_size sort order default_params result_path id_field name_field description | sort collection</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$collection_tok$">
+      <title>Inventory results</title>
+      <table>
+        <search>
+          <query>| mcquery all=true include_raw=$include_raw_tok$
+| search collection="$collection_tok$"
+| table _time collection object_name object_id configured version description endpoint page error message raw_json</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">25</option>
+        <option name="drilldown">none</option>
+        <format type="time" field="_time">
+          <option name="format">%Y-%m-%d %H:%M:%S</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Counts by collection</title>
+      <chart>
+        <search>
+          <query>| mcquery all=true include_raw=false | stats count by collection | sort collection</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+      </chart>
+    </panel>
+  </row>
+</form>
