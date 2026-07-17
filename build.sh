@@ -13,7 +13,7 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 APP_NAME="TA-missioncontrol-inventory"
-VERSION="1.0.0"
+VERSION="1.0.1"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${ROOT_DIR}/${APP_NAME}"

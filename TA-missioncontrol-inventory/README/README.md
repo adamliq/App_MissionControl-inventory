@@ -151,6 +151,6 @@ Run `./build.sh` to produce the package, then validate with:
 
 ```sh
 pip install splunk-appinspect
-splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.0.0.spl --mode precert --max-messages all
+splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.0.1.spl --mode precert --max-messages all
 ```
 
