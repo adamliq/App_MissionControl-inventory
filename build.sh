@@ -13,7 +13,7 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 APP_NAME="TA-missioncontrol-inventory"
-VERSION="1.0.1"
+VERSION="1.0.2"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${ROOT_DIR}/${APP_NAME}"
@@ -66,6 +66,13 @@ log "Validating bundled splunklib is importable ($PY_REQUIRED)"
 PYTHONPATH="$STAGE_DIR/bin" "$PY_REQUIRED" -c "from splunklib.searchcommands import GeneratingCommand" \
   || fail "bundled splunklib is missing or broken -- mcquery.py would fail at runtime"
 log "  splunklib import OK"
+
+log "Validating bundled splunklib package metadata ($PY_REQUIRED)"
+PYTHONPATH="$STAGE_DIR/bin" "$PY_REQUIRED" -c "
+import importlib.metadata
+importlib.metadata.version('splunk-sdk')
+" || fail "bin/*.dist-info is missing or broken -- splunklib.binding.request() calls importlib.metadata.version('splunk-sdk') on every HTTP request and would crash at runtime"
+log "  splunklib package metadata OK"
 
 log "Validating XML views/nav"
 find "$STAGE_DIR/default/data/ui" -name '*.xml' -print0 | xargs -0 -n1 xmllint --noout

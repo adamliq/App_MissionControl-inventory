@@ -104,7 +104,8 @@ TA-missioncontrol-inventory/
 │   └── missioncontrol_endpoints.csv
 ├── bin/
 │   ├── mcquery.py
-│   └── splunklib/        # bundled Splunk SDK for Python, required by mcquery.py
+│   ├── splunklib/                       # bundled Splunk SDK for Python, required by mcquery.py
+│   └── splunk_sdk-3.0.0.dist-info/      # package metadata splunklib reads at request time
 ├── metadata/
 │   └── default.meta
 ├── README/
@@ -119,6 +120,13 @@ Python (Apache License 2.0), bundled directly in the app because Splunk's
 built-in Python runtime does not ship `splunklib` itself. Custom chunked
 search commands that import it must carry their own copy. See
 `bin/splunklib/__init__.py` for the upstream copyright notice.
+
+`bin/splunk_sdk-3.0.0.dist-info/` ships alongside it because
+`splunklib.binding` calls `importlib.metadata.version("splunk-sdk")` on
+every HTTP request (to build the `User-Agent` header). Without installed
+package metadata on `sys.path`, that call raises
+`importlib.metadata.PackageNotFoundError` and `mcquery` fails on its first
+real search. `build.sh` verifies this resolves correctly on every build.
 
 ## Install notes
 
@@ -142,15 +150,16 @@ search commands that import it must carry their own copy. See
 
 ## AppInspect status
 
-Validated with `splunk-appinspect` 4.2.1, `--mode precert` (all tags, including `cloud`): 0 errors, 0 failures, 0 future-failures. Two informational warnings remain and are expected for this app:
+Validated with `splunk-appinspect` 4.2.1, `--mode precert` (all tags, including `cloud`): 0 errors, 0 failures, 0 future-failures. Three informational warnings remain and are expected for this app:
 
 - `check_for_python_script_existence` — generic notice that Python files exist; `bin/mcquery.py` and the bundled `splunklib` are Python 3-only, which the check cannot infer automatically.
 - `check_for_updates_disabled` — only applies to apps that will stay private and never reach Splunkbase; since `check_for_updates = true` is correct for a Splunkbase-listed app, this warning does not apply to the intended distribution path.
+- `check_python_sdk_version` — confirms the bundled SDK version (3.0.0) via `bin/splunk_sdk-3.0.0.dist-info/METADATA` and explicitly says "No action required at this time."
 
 Run `./build.sh` to produce the package, then validate with:
 
 ```sh
 pip install splunk-appinspect
-splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.0.1.spl --mode precert --max-messages all
+splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.0.2.spl --mode precert --max-messages all
 ```
 
