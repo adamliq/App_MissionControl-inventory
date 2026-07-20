@@ -156,7 +156,15 @@ class MCQueryCommand(GeneratingCommand):
     def _query_endpoint(self, row: Dict[str, str], query_time: int) -> Iterable[Dict[str, Any]]:
         collection_name = (row.get("collection") or "").strip()
         endpoint = (row.get("endpoint") or "").strip()
-        path = endpoint.lstrip("/")
+
+        # splunklib treats a path with no leading slash as *relative* to the
+        # service's own default namespace and re-prefixes it (e.g.
+        # "servicesNS/nobody/x/y" becomes
+        # "/servicesNS/<search's own owner>/<search's own app>/servicesNS/nobody/x/y").
+        # These endpoints are always absolute Splunkd paths, so the leading
+        # slash must be preserved -- stripping it here silently 404s every
+        # request regardless of how correct the configured path is.
+        path = endpoint if endpoint.startswith("/") else "/" + endpoint
 
         page_size = self._bounded_int(row.get("page_size"), default=100, minimum=1, maximum=500)
         max_pages = int(self.max_pages or 100)
@@ -175,7 +183,7 @@ class MCQueryCommand(GeneratingCommand):
             request_params["page"] = str(page)
 
             self.logger.info(
-                "mcquery collection=%s url=/%s?%s",
+                "mcquery collection=%s url=%s?%s",
                 collection_name,
                 path,
                 urlencode(request_params),

@@ -13,7 +13,7 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 APP_NAME="TA-missioncontrol-inventory"
-VERSION="1.2.0"
+VERSION="1.2.1"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${ROOT_DIR}/${APP_NAME}"
@@ -95,6 +95,31 @@ grep -q "build.sh logging self-check" "$LOG_TEST_DIR/SPLUNK_HOME/var/log/splunk/
   || fail "default/logging.conf did not produce a log file at var/log/splunk/mcquery.log"
 rm -rf "$LOG_TEST_DIR"
 log "  logging configuration OK"
+
+log "Validating absolute-path handling for configured endpoints ($PY_REQUIRED)"
+PYTHONPATH="$STAGE_DIR/bin" "$PY_REQUIRED" -c "
+import csv
+from pathlib import Path
+from splunklib.binding import Context
+
+ctx = Context(host='127.0.0.1', port=8089, owner='nobody', app='search', scheme='https')
+lookup = Path('$STAGE_DIR/lookups/missioncontrol_endpoints.csv')
+failed = []
+with lookup.open(newline='', encoding='utf-8-sig') as handle:
+    for row in csv.DictReader(handle):
+        endpoint = (row.get('endpoint') or '').strip()
+        if not endpoint:
+            continue
+        path = endpoint if endpoint.startswith('/') else '/' + endpoint
+        resolved = ctx._abspath(path)
+        if resolved != endpoint:
+            failed.append((row.get('collection'), endpoint, resolved))
+if failed:
+    for collection, endpoint, resolved in failed:
+        print(f'  {collection}: {endpoint} resolved to {resolved}, expected unchanged')
+    raise SystemExit(1)
+" || fail "an endpoint in lookups/missioncontrol_endpoints.csv does not resolve to its own literal path -- mcquery would silently 404 (this is the exact bug class where lstrip('/') mangled every request)"
+log "  absolute-path handling OK"
 
 log "Validating XML views/nav"
 find "$STAGE_DIR/default/data/ui" -name '*.xml' -print0 | xargs -0 -n1 xmllint --noout

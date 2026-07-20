@@ -93,6 +93,8 @@ The command rejects endpoints that:
 - Are Splunk Web browser-proxy paths (contain `/splunkd/__raw/`)
 - Are not `/servicesNS/<owner>/<app>/...` or `/services/<app>/...` where `<app>` is in the allowed app namespace list (`ALLOWED_APP_NAMESPACES` in `bin/mcquery.py`, currently `missioncontrol` and `SplunkEnterpriseSecuritySuite`)
 
+Endpoint values must keep their absolute leading slash (e.g. `/servicesNS/-/missioncontrol/v1/soar/app`, not `servicesNS/-/missioncontrol/v1/soar/app`). splunklib treats a path with no leading slash as *relative* to the search's own default namespace and silently re-prefixes it -- `mcquery.py` used to strip the leading slash itself (`endpoint.lstrip("/")`), which caused every request to 404 regardless of how correct the configured path was. `build.sh` now verifies every row in the lookup resolves to its own literal path.
+
 The owner segment (`-`, `nobody`, or a real username) is intentionally unconstrained since it doesn't affect which app's REST handler answers the request; the app namespace is what's checked. This keeps the app scoped to a fixed allowlist of REST-registering apps and avoids an arbitrary URL fetcher pattern. To trust a new app's endpoints, add its namespace to `ALLOWED_APP_NAMESPACES` explicitly -- this is a code change, not a lookup-editable setting, so the safety boundary can't be widened just by editing the CSV.
 
 ## Files
@@ -194,6 +196,6 @@ Run `./build.sh` to produce the package, then validate with:
 
 ```sh
 pip install splunk-appinspect
-splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.2.0.spl --mode precert --max-messages all
+splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.2.1.spl --mode precert --max-messages all
 ```
 
