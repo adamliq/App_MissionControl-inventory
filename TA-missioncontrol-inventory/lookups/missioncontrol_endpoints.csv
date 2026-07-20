@@ -3,3 +3,5 @@ soar_apps,/servicesNS/-/missioncontrol/v1/soar/app,true,100,name,asc,configured=
 soar_assets,/servicesNS/-/missioncontrol/v1/soar/asset,false,100,name,asc,pretty=true,items,id,name,Example SOAR assets endpoint - enable after validating path
 soar_playbooks,/servicesNS/-/missioncontrol/v1/soar/playbook,false,100,name,asc,pretty=true,items,id,name,Example SOAR playbooks endpoint - enable after validating path
 soar_automation,/servicesNS/-/missioncontrol/v1/soar/automation,false,100,name,asc,pretty=true,items,id,name,Example SOAR automation endpoint - enable after validating path
+mc_automation_rules,/servicesNS/nobody/missioncontrol/v1/automation_rule,false,100,name,asc,pretty=true,items,id,name,Mission Control automation rules - enable after validating path and result_path
+es_tim_info,/servicesNS/nobody/SplunkEnterpriseSecuritySuite/tim/info,false,100,,,output_mode=json,,id,name,Enterprise Security Threat Intelligence Management info - enable after validating path and result_path

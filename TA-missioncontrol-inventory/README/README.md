@@ -26,6 +26,8 @@ It intentionally does **not** query browser proxy paths such as:
 
 Mission Control and SOAR endpoint availability may vary by Splunk Cloud stack, entitlement, role, release, and whether the endpoint is considered supported for app-based use. Validate endpoint access in your Splunk Cloud environment before enabling scheduled collection.
 
+If you paste in a Splunk Web browser-proxy path by mistake (anything containing `/splunkd/__raw/`), `mcquery` rejects it with an `endpoint_rejected` error event that tells you to strip the `/<locale>/splunkd/__raw` prefix, rather than failing silently or fetching it anyway.
+
 ## SPL examples
 
 Query the enabled endpoints:
@@ -86,9 +88,10 @@ The command rejects endpoints that:
 
 - Are full URLs
 - Contain `..` or backslash path traversal patterns
-- Do not start with `/servicesNS/-/missioncontrol/` or `/services/missioncontrol/`
+- Are Splunk Web browser-proxy paths (contain `/splunkd/__raw/`)
+- Are not `/servicesNS/<owner>/<app>/...` or `/services/<app>/...` where `<app>` is in the allowed app namespace list (`ALLOWED_APP_NAMESPACES` in `bin/mcquery.py`, currently `missioncontrol` and `SplunkEnterpriseSecuritySuite`)
 
-This keeps the app scoped to local Mission Control inventory paths and avoids an arbitrary URL fetcher pattern.
+The owner segment (`-`, `nobody`, or a real username) is intentionally unconstrained since it doesn't affect which app's REST handler answers the request; the app namespace is what's checked. This keeps the app scoped to a fixed allowlist of REST-registering apps and avoids an arbitrary URL fetcher pattern. To trust a new app's endpoints, add its namespace to `ALLOWED_APP_NAMESPACES` explicitly -- this is a code change, not a lookup-editable setting, so the safety boundary can't be widened just by editing the CSV.
 
 ## Files
 
@@ -160,6 +163,6 @@ Run `./build.sh` to produce the package, then validate with:
 
 ```sh
 pip install splunk-appinspect
-splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.0.2.spl --mode precert --max-messages all
+splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.1.0.spl --mode precert --max-messages all
 ```
 

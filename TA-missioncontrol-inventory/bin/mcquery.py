@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-mcquery - lookup-driven Mission Control / SOAR inventory query command.
+mcquery - lookup-driven Mission Control / Enterprise Security inventory query command.
 
 Designed for a single Splunk Cloud stack. The command calls local Splunkd
-Mission Control endpoints using the running Splunk search session. It does not
-store credentials and it refuses arbitrary URLs or non-Mission-Control paths.
+REST endpoints under an allowlisted set of app namespaces (Mission Control,
+Enterprise Security) using the running Splunk search session. It does not
+store credentials and it refuses arbitrary URLs, browser-proxy paths, or
+paths outside the allowed app namespaces.
 
 Example:
     | mcquery collection=soar_apps
@@ -26,9 +28,15 @@ from splunklib.searchcommands import Configuration, GeneratingCommand, Option, d
 
 APP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 DEFAULT_LOOKUP = "missioncontrol_endpoints.csv"
-DEFAULT_ALLOWED_PREFIXES = (
-    "/servicesNS/-/missioncontrol/",
-    "/services/missioncontrol/",
+
+# Splunkd REST app namespaces this command is allowed to query. The owner
+# segment in /servicesNS/<owner>/<app>/... is intentionally unconstrained
+# (it varies: "-", "nobody", or a real username) -- what's actually
+# security-relevant is the app namespace, since that determines which
+# app's REST handler answers the request.
+ALLOWED_APP_NAMESPACES = (
+    "missioncontrol",
+    "SplunkEnterpriseSecuritySuite",
 )
 
 
@@ -249,8 +257,27 @@ class MCQueryCommand(GeneratingCommand):
             return False, "Endpoint must be a local Splunkd path, not a URL."
         if ".." in endpoint or "\\" in endpoint:
             return False, "Endpoint contains an unsafe path segment."
-        if not endpoint.startswith(DEFAULT_ALLOWED_PREFIXES):
-            return False, "Endpoint must start with /servicesNS/-/missioncontrol/ or /services/missioncontrol/."
+        if "/splunkd/__raw/" in endpoint:
+            return False, (
+                "Endpoint is a Splunk Web browser-proxy path, not a Splunkd REST path. "
+                "Strip the leading /<locale>/splunkd/__raw prefix, e.g. use "
+                "/servicesNS/nobody/missioncontrol/v1/automation_rule instead of "
+                "/en-US/splunkd/__raw/servicesNS/nobody/missioncontrol/v1/automation_rule."
+            )
+
+        parts = [part for part in endpoint.split("/") if part]
+        if parts[:1] == ["servicesNS"] and len(parts) >= 3:
+            app_namespace = parts[2]
+        elif parts[:1] == ["services"] and len(parts) >= 2:
+            app_namespace = parts[1]
+        else:
+            return False, "Endpoint must start with /servicesNS/<owner>/<app>/ or /services/<app>/."
+
+        if app_namespace not in ALLOWED_APP_NAMESPACES:
+            return False, (
+                f"Endpoint app namespace '{app_namespace}' is not allowed. "
+                f"Allowed namespaces: {', '.join(ALLOWED_APP_NAMESPACES)}."
+            )
         return True, "ok"
 
     @staticmethod
