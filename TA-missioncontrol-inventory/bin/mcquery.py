@@ -21,7 +21,7 @@ import os
 import re
 import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, urlencode
 
 from splunklib.searchcommands import Configuration, GeneratingCommand, Option, dispatch, validators
 
@@ -145,9 +145,13 @@ class MCQueryCommand(GeneratingCommand):
             requested = {x.strip() for x in requested_collection.split(",") if x.strip()}
             return [row for row in rows if (row.get("collection") or "").strip() in requested]
 
-        # With no collection argument, default to all enabled rows. all=true is explicit,
-        # but the default is intentionally useful for scheduled inventory jobs.
-        return [row for row in rows if self._as_bool(row.get("enabled"))]
+        if bool(self.all_endpoints):
+            return [row for row in rows if self._as_bool(row.get("enabled"))]
+
+        # Neither collection= nor all=true was given -- nothing selected.
+        # generate() reports this via the no_matching_endpoints error event
+        # rather than silently guessing "all enabled rows" was intended.
+        return []
 
     def _query_endpoint(self, row: Dict[str, str], query_time: int) -> Iterable[Dict[str, Any]]:
         collection_name = (row.get("collection") or "").strip()
@@ -170,6 +174,12 @@ class MCQueryCommand(GeneratingCommand):
             request_params["page_size"] = str(page_size)
             request_params["page"] = str(page)
 
+            self.logger.info(
+                "mcquery collection=%s url=/%s?%s",
+                collection_name,
+                path,
+                urlencode(request_params),
+            )
             response = self.service.get(path, **request_params)
             payload = self._read_json_response(response)
             items = self._extract_items(payload, row.get("result_path"))

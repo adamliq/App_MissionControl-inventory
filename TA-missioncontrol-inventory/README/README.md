@@ -30,6 +30,8 @@ If you paste in a Splunk Web browser-proxy path by mistake (anything containing 
 
 ## SPL examples
 
+`mcquery` requires either `collection=<name>` or `all=true` -- bare `| mcquery` with neither returns a `no_matching_endpoints` error event rather than silently guessing you meant "all enabled endpoints."
+
 Query the enabled endpoints:
 
 ```spl
@@ -100,6 +102,7 @@ TA-missioncontrol-inventory/
 ├── default/
 │   ├── app.conf
 │   ├── commands.conf
+│   ├── logging.conf
 │   ├── savedsearches.conf
 │   ├── transforms.conf
 │   └── data/ui/views/missioncontrol_inventory.xml
@@ -131,6 +134,33 @@ package metadata on `sys.path`, that call raises
 `importlib.metadata.PackageNotFoundError` and `mcquery` fails on its first
 real search. `build.sh` verifies this resolves correctly on every build.
 
+## Operational logging
+
+Every REST call `mcquery` makes is logged at INFO level via
+`self.logger` (the Splunk-supported logger the SDK's `SearchCommand` base
+class exposes), including the exact path and query string requested:
+
+```text
+mcquery collection=soar_apps url=/servicesNS/-/missioncontrol/v1/soar/app?configured=true&pretty=true&page_size=100&page=0
+```
+
+`default/logging.conf` configures this logger at INFO level with a
+`RotatingFileHandler` writing to `$SPLUNK_HOME/var/log/splunk/mcquery.log`
+(10 MB per file, 3 backups). Without it, `SearchCommand`'s logger defaults
+to `WARNING`, so `self.logger.info(...)` calls are silently dropped --
+`build.sh` verifies the effective level and that a log line actually lands
+in that file on every build.
+
+Because `logging.conf` isn't one of Splunk's own recognized `.conf` file
+types, AppInspect treats it as a custom config and requires a reload
+trigger and a search head cluster replication entry: `default/app.conf`
+has `[triggers] reload.logging = simple` and `default/server.conf` has
+`[shclustering] conf_replication_include.logging = true`.
+
+This log file is not indexed into Splunk by default. To search it, add a
+`monitor://$SPLUNK_HOME/var/log/splunk/mcquery.log` stanza to
+`local/inputs.conf` with an appropriate index and sourcetype.
+
 ## Install notes
 
 1. Install as a private app in Splunk Cloud.
@@ -150,6 +180,7 @@ real search. `build.sh` verifies this resolves correctly on every build.
 - `default/app.conf` sets `[package] check_for_updates = true` so update checking is not disabled.
 - `bin/commands.conf` declares `python.required = 3.13` to match the bundled Splunk SDK for Python (3.0.0), which requires Python 3.13.
 - `metadata/default.meta` grants write access to both `admin` and `sc_admin` so the app's knowledge objects are manageable by Splunk Cloud administrators, who hold `sc_admin` rather than `admin`.
+- The Mission Control Inventory dashboard's "Inventory results" and "Counts by collection" panels share one base search (`id="mcquery_base"`) rather than each running their own `| mcquery all=true`, so opening the dashboard queries every live endpoint once per load, not twice.
 
 ## AppInspect status
 
@@ -163,6 +194,6 @@ Run `./build.sh` to produce the package, then validate with:
 
 ```sh
 pip install splunk-appinspect
-splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.1.0.spl --mode precert --max-messages all
+splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.2.0.spl --mode precert --max-messages all
 ```
 
