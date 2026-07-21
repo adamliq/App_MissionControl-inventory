@@ -13,7 +13,7 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 APP_NAME="TA-missioncontrol-inventory"
-VERSION="1.2.1"
+VERSION="1.3.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${ROOT_DIR}/${APP_NAME}"
@@ -64,8 +64,17 @@ log "  Python syntax OK"
 
 log "Validating bundled splunklib is importable ($PY_REQUIRED)"
 PYTHONPATH="$STAGE_DIR/bin" "$PY_REQUIRED" -c "from splunklib.searchcommands import GeneratingCommand" \
-  || fail "bundled splunklib is missing or broken -- mcquery.py would fail at runtime"
+  || fail "bundled splunklib is missing or broken -- mcquery.py/mcpost.py would fail at runtime"
 log "  splunklib import OK"
+
+log "Validating custom commands import cleanly ($PY_REQUIRED)"
+PYTHONPATH="$STAGE_DIR/bin" "$PY_REQUIRED" -c "
+import mcquery
+import mcpost
+mcquery.MCQueryCommand()
+mcpost.MCPostCommand()
+" || fail "mcquery.py or mcpost.py failed to import/instantiate"
+log "  custom commands OK"
 
 log "Validating bundled splunklib package metadata ($PY_REQUIRED)"
 PYTHONPATH="$STAGE_DIR/bin" "$PY_REQUIRED" -c "
@@ -79,20 +88,24 @@ LOG_TEST_DIR="$(mktemp -d)"
 mkdir -p "$LOG_TEST_DIR/SPLUNK_HOME/var/log/splunk"
 cp -r "$STAGE_DIR" "$LOG_TEST_DIR/$APP_NAME"
 cat > "$LOG_TEST_DIR/$APP_NAME/bin/_logging_check.py" <<'PYEOF'
+import mcpost
 import mcquery
 
-cmd = mcquery.MCQueryCommand()
-level = cmd.logger.getEffectiveLevel()
-if level > 20:
-    raise SystemExit(f"logger effective level is {level}, expected INFO (20) or lower")
-cmd.logger.info("build.sh logging self-check")
+for cmd in (mcquery.MCQueryCommand(), mcpost.MCPostCommand()):
+    level = cmd.logger.getEffectiveLevel()
+    if level > 20:
+        raise SystemExit(f"{cmd.__class__.__name__} logger effective level is {level}, expected INFO (20) or lower")
+    cmd.logger.info(f"build.sh logging self-check ({cmd.__class__.__name__})")
 PYEOF
 (
   cd "$LOG_TEST_DIR/$APP_NAME/bin"
   SPLUNK_HOME="$LOG_TEST_DIR/SPLUNK_HOME" "$PY_REQUIRED" _logging_check.py
-) || fail "default/logging.conf is missing or broken -- mcquery would silently drop self.logger.info() calls (including the queried-URL log line) at runtime"
-grep -q "build.sh logging self-check" "$LOG_TEST_DIR/SPLUNK_HOME/var/log/splunk/mcquery.log" 2>/dev/null \
-  || fail "default/logging.conf did not produce a log file at var/log/splunk/mcquery.log"
+) || fail "default/logging.conf is missing or broken -- mcquery/mcpost would silently drop self.logger.info() calls (including the queried-URL log line) at runtime"
+LOG_FILE="$LOG_TEST_DIR/SPLUNK_HOME/var/log/splunk/mission_control_inventory.log"
+grep -q "build.sh logging self-check (MCQueryCommand)" "$LOG_FILE" 2>/dev/null \
+  || fail "default/logging.conf did not produce a log line for MCQueryCommand at var/log/splunk/mission_control_inventory.log"
+grep -q "build.sh logging self-check (MCPostCommand)" "$LOG_FILE" 2>/dev/null \
+  || fail "default/logging.conf did not produce a log line for MCPostCommand at var/log/splunk/mission_control_inventory.log"
 rm -rf "$LOG_TEST_DIR"
 log "  logging configuration OK"
 
@@ -102,23 +115,32 @@ import csv
 from pathlib import Path
 from splunklib.binding import Context
 
+import mc_common
+import mcpost
+
 ctx = Context(host='127.0.0.1', port=8089, owner='nobody', app='search', scheme='https')
-lookup = Path('$STAGE_DIR/lookups/missioncontrol_endpoints.csv')
 failed = []
+
+lookup = Path('$STAGE_DIR/lookups/missioncontrol_endpoints.csv')
 with lookup.open(newline='', encoding='utf-8-sig') as handle:
     for row in csv.DictReader(handle):
         endpoint = (row.get('endpoint') or '').strip()
         if not endpoint:
             continue
-        path = endpoint if endpoint.startswith('/') else '/' + endpoint
-        resolved = ctx._abspath(path)
+        resolved = ctx._abspath(mc_common.to_absolute_path(endpoint))
         if resolved != endpoint:
             failed.append((row.get('collection'), endpoint, resolved))
+
+for endpoint in mcpost.ALLOWED_POST_ENDPOINTS:
+    resolved = ctx._abspath(mc_common.to_absolute_path(endpoint))
+    if resolved != endpoint:
+        failed.append(('mcpost', endpoint, resolved))
+
 if failed:
     for collection, endpoint, resolved in failed:
         print(f'  {collection}: {endpoint} resolved to {resolved}, expected unchanged')
     raise SystemExit(1)
-" || fail "an endpoint in lookups/missioncontrol_endpoints.csv does not resolve to its own literal path -- mcquery would silently 404 (this is the exact bug class where lstrip('/') mangled every request)"
+" || fail "an endpoint does not resolve to its own literal path -- mcquery/mcpost would silently 404 (this is the exact bug class where lstrip('/') mangled every request)"
 log "  absolute-path handling OK"
 
 log "Validating XML views/nav"

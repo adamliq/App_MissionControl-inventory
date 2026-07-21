@@ -25,6 +25,7 @@ from urllib.parse import parse_qsl, urlencode
 
 from splunklib.searchcommands import Configuration, GeneratingCommand, Option, dispatch, validators
 
+import mc_common
 
 APP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 DEFAULT_LOOKUP = "missioncontrol_endpoints.csv"
@@ -157,14 +158,7 @@ class MCQueryCommand(GeneratingCommand):
         collection_name = (row.get("collection") or "").strip()
         endpoint = (row.get("endpoint") or "").strip()
 
-        # splunklib treats a path with no leading slash as *relative* to the
-        # service's own default namespace and re-prefixes it (e.g.
-        # "servicesNS/nobody/x/y" becomes
-        # "/servicesNS/<search's own owner>/<search's own app>/servicesNS/nobody/x/y").
-        # These endpoints are always absolute Splunkd paths, so the leading
-        # slash must be preserved -- stripping it here silently 404s every
-        # request regardless of how correct the configured path is.
-        path = endpoint if endpoint.startswith("/") else "/" + endpoint
+        path = mc_common.to_absolute_path(endpoint)
 
         page_size = self._bounded_int(row.get("page_size"), default=100, minimum=1, maximum=500)
         max_pages = int(self.max_pages or 100)
@@ -269,19 +263,9 @@ class MCQueryCommand(GeneratingCommand):
 
     @staticmethod
     def _validate_endpoint(endpoint: str) -> Tuple[bool, str]:
-        if not endpoint:
-            return False, "Endpoint is empty."
-        if "://" in endpoint:
-            return False, "Endpoint must be a local Splunkd path, not a URL."
-        if ".." in endpoint or "\\" in endpoint:
-            return False, "Endpoint contains an unsafe path segment."
-        if "/splunkd/__raw/" in endpoint:
-            return False, (
-                "Endpoint is a Splunk Web browser-proxy path, not a Splunkd REST path. "
-                "Strip the leading /<locale>/splunkd/__raw prefix, e.g. use "
-                "/servicesNS/nobody/missioncontrol/v1/automation_rule instead of "
-                "/en-US/splunkd/__raw/servicesNS/nobody/missioncontrol/v1/automation_rule."
-            )
+        ok, reason = mc_common.reject_unsafe_endpoint(endpoint)
+        if not ok:
+            return False, reason
 
         parts = [part for part in endpoint.split("/") if part]
         if parts[:1] == ["servicesNS"] and len(parts) >= 3:

@@ -6,6 +6,10 @@ export = system
 access = read : [ * ], write : [ admin, sc_admin ]
 export = system
 
+[commands/mcpost]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
 [lookups/missioncontrol_endpoints.csv]
 access = read : [ * ], write : [ admin, sc_admin ]
 export = system

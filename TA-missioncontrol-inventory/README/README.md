@@ -4,7 +4,8 @@ Lookup-driven Splunk Cloud app for querying local Mission Control / SOAR invento
 
 ## What it provides
 
-- `mcquery` generating search command
+- `mcquery` generating search command (read-only, GET)
+- `mcpost` generating search command (SPL syntax validation, POST)
 - `missioncontrol_endpoints.csv` endpoint registry
 - Mission Control Inventory dashboard
 - Disabled saved searches for current lookup export and daily summary indexing
@@ -84,7 +85,7 @@ Default columns:
 | name_field | Dot-path for object name |
 | description | Human description of the endpoint row |
 
-## Safety controls
+## Safety controls (mcquery)
 
 The command rejects endpoints that:
 
@@ -96,6 +97,23 @@ The command rejects endpoints that:
 Endpoint values must keep their absolute leading slash (e.g. `/servicesNS/-/missioncontrol/v1/soar/app`, not `servicesNS/-/missioncontrol/v1/soar/app`). splunklib treats a path with no leading slash as *relative* to the search's own default namespace and silently re-prefixes it -- `mcquery.py` used to strip the leading slash itself (`endpoint.lstrip("/")`), which caused every request to 404 regardless of how correct the configured path was. `build.sh` now verifies every row in the lookup resolves to its own literal path.
 
 The owner segment (`-`, `nobody`, or a real username) is intentionally unconstrained since it doesn't affect which app's REST handler answers the request; the app namespace is what's checked. This keeps the app scoped to a fixed allowlist of REST-registering apps and avoids an arbitrary URL fetcher pattern. To trust a new app's endpoints, add its namespace to `ALLOWED_APP_NAMESPACES` explicitly -- this is a code change, not a lookup-editable setting, so the safety boundary can't be widened just by editing the CSV.
+
+## mcpost (SPL syntax validation)
+
+`mcpost` POSTs an SPL query string to Splunkd's search parser endpoint with `parse_only=true`, to validate syntax without running the search. It does not dispatch, schedule, or execute anything.
+
+```spl
+| mcpost query="index=main | stats count"
+```
+
+Output fields: `endpoint`, `query`, `messages` (if the parser returned any), and `raw_json` (the full parser response). A syntax error surfaces as an `error=parse_failed` event with the HTTP status and detail Splunkd returned, rather than a bare exception.
+
+**Safety model -- deliberately tighter than mcquery:**
+
+- `mcquery` is read-only (GET) and allowlists an *app namespace prefix* (`/servicesNS/<owner>/<app>/...`), so any path under a trusted app is reachable.
+- `mcpost` performs POST requests, so it allowlists an *exact full path* instead: `ALLOWED_POST_ENDPOINTS` in `bin/mcpost.py` currently contains only `/services/search/v2/parser`. There is no app-namespace matching for POST -- a namespace-prefix allowlist would also open every other endpoint under that namespace (e.g. `/services/search/jobs`, which dispatches and runs searches), which is a categorically different risk than a syntax check.
+- `parse_only=true` and `output_mode=json` are hardcoded, not user-configurable options. This command is a syntax validator, not a general search-dispatch proxy; if you need different POST behavior, that's a deliberate code change to `bin/mcpost.py`, not a runtime flag.
+- Same baseline protections as `mcquery` (shared via `bin/mc_common.py`): rejects full URLs, path traversal, and Splunk Web browser-proxy paths (`/splunkd/__raw/`), and preserves the endpoint's absolute leading slash so splunklib doesn't silently re-prefix the path.
 
 ## Files
 
@@ -112,7 +130,9 @@ TA-missioncontrol-inventory/
 │   └── missioncontrol_endpoints.csv
 ├── bin/
 │   ├── mcquery.py
-│   ├── splunklib/                       # bundled Splunk SDK for Python, required by mcquery.py
+│   ├── mcpost.py
+│   ├── mc_common.py                     # safety helpers shared by mcquery.py and mcpost.py
+│   ├── splunklib/                       # bundled Splunk SDK for Python, required by mcquery.py/mcpost.py
 │   └── splunk_sdk-3.0.0.dist-info/      # package metadata splunklib reads at request time
 ├── metadata/
 │   └── default.meta
@@ -133,25 +153,28 @@ search commands that import it must carry their own copy. See
 `splunklib.binding` calls `importlib.metadata.version("splunk-sdk")` on
 every HTTP request (to build the `User-Agent` header). Without installed
 package metadata on `sys.path`, that call raises
-`importlib.metadata.PackageNotFoundError` and `mcquery` fails on its first
-real search. `build.sh` verifies this resolves correctly on every build.
+`importlib.metadata.PackageNotFoundError` and `mcquery`/`mcpost` fail on
+their first real request. `build.sh` verifies this resolves correctly on
+every build.
 
 ## Operational logging
 
-Every REST call `mcquery` makes is logged at INFO level via
+Every REST call `mcquery` and `mcpost` make is logged at INFO level via
 `self.logger` (the Splunk-supported logger the SDK's `SearchCommand` base
-class exposes), including the exact path and query string requested:
+class exposes), including the exact path and query/body parameters used:
 
 ```text
 mcquery collection=soar_apps url=/servicesNS/-/missioncontrol/v1/soar/app?configured=true&pretty=true&page_size=100&page=0
+mcpost endpoint=/services/search/v2/parser params={'q': 'index=main | stats count', 'parse_only': 'true', 'output_mode': 'json'}
 ```
 
 `default/logging.conf` configures this logger at INFO level with a
-`RotatingFileHandler` writing to `$SPLUNK_HOME/var/log/splunk/mcquery.log`
-(10 MB per file, 3 backups). Without it, `SearchCommand`'s logger defaults
-to `WARNING`, so `self.logger.info(...)` calls are silently dropped --
-`build.sh` verifies the effective level and that a log line actually lands
-in that file on every build.
+`RotatingFileHandler` writing to
+`$SPLUNK_HOME/var/log/splunk/mission_control_inventory.log` (10 MB per
+file, 3 backups), shared by both commands. Without it, `SearchCommand`'s
+logger defaults to `WARNING`, so `self.logger.info(...)` calls are
+silently dropped -- `build.sh` verifies the effective level and that a
+log line actually lands in that file for both commands on every build.
 
 Because `logging.conf` isn't one of Splunk's own recognized `.conf` file
 types, AppInspect treats it as a custom config and requires a reload
@@ -160,8 +183,8 @@ has `[triggers] reload.logging = simple` and `default/server.conf` has
 `[shclustering] conf_replication_include.logging = true`.
 
 This log file is not indexed into Splunk by default. To search it, add a
-`monitor://$SPLUNK_HOME/var/log/splunk/mcquery.log` stanza to
-`local/inputs.conf` with an appropriate index and sourcetype.
+`monitor://$SPLUNK_HOME/var/log/splunk/mission_control_inventory.log`
+stanza to `local/inputs.conf` with an appropriate index and sourcetype.
 
 ## Install notes
 
@@ -196,6 +219,6 @@ Run `./build.sh` to produce the package, then validate with:
 
 ```sh
 pip install splunk-appinspect
-splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.2.1.spl --mode precert --max-messages all
+splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.3.0.spl --mode precert --max-messages all
 ```
 
