@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-mcpost - restricted Splunkd REST POST command for SPL syntax validation.
+mcparser - restricted Splunkd REST POST command for SPL syntax validation.
 
 Designed for a single Splunk Cloud stack. POSTs to a fixed allowlist of
 local Splunkd REST endpoints using the running Splunk search session. It
@@ -19,7 +19,7 @@ the search. parse_only is intentionally not user-configurable -- this
 command is a syntax validator, not a general search-dispatch proxy.
 
 Example:
-    | mcpost query="index=main | stats count"
+    | mcparser query="index=main | stats count"
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ ALLOWED_POST_ENDPOINTS = (DEFAULT_ENDPOINT,)
 
 
 @Configuration(distributed=False)
-class MCPostCommand(GeneratingCommand):
+class MCParserCommand(GeneratingCommand):
     """POST an SPL query to Splunkd's parser endpoint to validate its syntax."""
 
     query = Option(
@@ -71,7 +71,7 @@ class MCPostCommand(GeneratingCommand):
             "output_mode": "json",
         }
 
-        self.logger.info("mcpost endpoint=%s params=%s", path, post_params)
+        self.logger.info("mcparser endpoint=%s params=%s", path, post_params)
 
         try:
             response = self.service.post(path, **post_params)
@@ -122,7 +122,7 @@ class MCPostCommand(GeneratingCommand):
             return False, reason
         if endpoint not in ALLOWED_POST_ENDPOINTS:
             return False, (
-                f"Endpoint '{endpoint}' is not allowed for mcpost. "
+                f"Endpoint '{endpoint}' is not allowed for mcparser. "
                 f"Allowed endpoints: {', '.join(ALLOWED_POST_ENDPOINTS)}."
             )
         return True, "ok"
@@ -148,4 +148,4 @@ class MCPostCommand(GeneratingCommand):
 
 
 if __name__ == "__main__":
-    dispatch(MCPostCommand)
+    dispatch(MCParserCommand)

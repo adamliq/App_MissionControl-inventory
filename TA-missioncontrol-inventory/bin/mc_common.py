@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared Splunkd REST path safety helpers for mcquery and mcpost."""
+"""Shared Splunkd REST path safety helpers for mcquery and mcparser."""
 
 from __future__ import annotations
 

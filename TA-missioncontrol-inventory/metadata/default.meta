@@ -6,7 +6,7 @@ export = system
 access = read : [ * ], write : [ admin, sc_admin ]
 export = system
 
-[commands/mcpost]
+[commands/mcparser]
 access = read : [ * ], write : [ admin, sc_admin ]
 export = system
 
