@@ -77,14 +77,27 @@ class MCPostCommand(GeneratingCommand):
             response = self.service.post(path, **post_params)
             payload = self._read_json_response(response)
         except HTTPError as exc:
-            yield self._error_event(
+            event = self._error_event(
                 "parse_failed",
-                str(exc),
+                f"HTTP {exc.status} {exc.reason}",
                 endpoint=endpoint,
                 query=query_text,
                 status=exc.status,
                 query_time=query_time,
             )
+            # HTTPError only pretty-prints XML detail; the parser endpoint
+            # returns JSON, so parse exc.body ourselves for a readable
+            # messages field instead of a raw bytes repr.
+            detail = exc.body.decode("utf-8", errors="replace") if isinstance(exc.body, bytes) else exc.body
+            try:
+                detail_payload = json.loads(detail) if detail else None
+            except ValueError:
+                detail_payload = None
+            if isinstance(detail_payload, dict) and "messages" in detail_payload:
+                event["messages"] = json.dumps(detail_payload["messages"], default=str)
+            elif detail:
+                event["detail"] = detail
+            yield event
             return
         except Exception as exc:  # pragma: no cover - defensive for Splunk runtime
             yield self._error_event(
