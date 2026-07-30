@@ -18,8 +18,18 @@ called with parse_only=true: this validates SPL syntax without running
 the search. parse_only is intentionally not user-configurable -- this
 command is a syntax validator, not a general search-dispatch proxy.
 
+query must be URL-encoded. Splunk's own SPL argument parser reads the
+literal text typed after "query=" directly (it does not URL-decode at
+that layer) -- embedding a raw "|" or '"' inside a quoted option value
+at the search bar is unreliable and can be mis-tokenized by Splunk's
+own outer SPL parser before this command ever runs. URL-encoding the
+query sidesteps that entirely, since the encoded text has no
+SPL-significant characters left for the outer parser to trip on.
+
 Example:
-    | mcparser query="index=main | stats count"
+    | mcparser query="index%3Dmain%20%7C%20stats%20count"
+
+which decodes to: index=main | stats count
 """
 
 from __future__ import annotations
@@ -27,6 +37,7 @@ from __future__ import annotations
 import json
 import time
 from typing import Any, Dict, Iterable
+from urllib.parse import unquote
 
 from splunklib.binding import HTTPError
 from splunklib.searchcommands import Configuration, GeneratingCommand, Option, dispatch
@@ -45,7 +56,11 @@ class MCParserCommand(GeneratingCommand):
     """POST an SPL query to Splunkd's parser endpoint to validate its syntax."""
 
     query = Option(
-        doc='SPL query text to validate. Example: query="index=main | stats count"',
+        doc=(
+            "URL-encoded SPL query text to validate. Example: "
+            'query="index%3Dmain%20%7C%20stats%20count" (decodes to '
+            '"index=main | stats count").'
+        ),
         require=True,
     )
     endpoint = Option(
@@ -57,7 +72,10 @@ class MCParserCommand(GeneratingCommand):
     def generate(self) -> Iterable[Dict[str, Any]]:
         query_time = int(time.time())
         endpoint = str(self.endpoint).strip()
-        query_text = str(self.query)
+        # query is expected URL-encoded (see module docstring); unquote() is
+        # a safe no-op on text with no percent-escapes, so a plain literal
+        # query with no special characters still works unchanged.
+        query_text = unquote(str(self.query))
 
         valid, reason = self._validate_endpoint(endpoint)
         if not valid:

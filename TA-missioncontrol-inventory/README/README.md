@@ -102,11 +102,15 @@ The owner segment (`-`, `nobody`, or a real username) is intentionally unconstra
 
 `mcparser` POSTs an SPL query string to Splunkd's search parser endpoint with `parse_only=true`, to validate syntax without running the search. It does not dispatch, schedule, or execute anything.
 
+**`query` must be URL-encoded:**
+
 ```spl
-| mcparser query="index=main | stats count"
+| mcparser query="index%3Dmain%20%7C%20stats%20count"
 ```
 
-Output fields: `endpoint`, `query`, `messages` (if the parser returned any), and `raw_json` (the full parser response). A syntax error surfaces as an `error=parse_failed` event with the HTTP status and detail Splunkd returned, rather than a bare exception.
+decodes to `index=main | stats count` before being sent. Splunk's own SPL argument parser reads the literal text typed after `query=` directly -- it does not URL-decode at that layer -- so embedding a raw `|` or `"` inside a quoted option value at the search bar is unreliable and can be mis-tokenized by Splunk's own outer SPL parser before `mcparser` ever runs. URL-encoding sidesteps that entirely, since the encoded text has no SPL-significant characters left for the outer parser to trip on. `mcparser` decodes `query` internally (`urllib.parse.unquote`, a safe no-op on plain text with no percent-escapes, so a trivial query like `query="index=main"` with no special characters still works unencoded).
+
+Output fields: `endpoint`, `query` (the decoded text actually sent), `messages` (if the parser returned any), and `raw_json` (the full parser response). A syntax error surfaces as an `error=parse_failed` event with the HTTP status and detail Splunkd returned, rather than a bare exception.
 
 **Safety model -- deliberately tighter than mcquery:**
 
@@ -219,6 +223,6 @@ Run `./build.sh` to produce the package, then validate with:
 
 ```sh
 pip install splunk-appinspect
-splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.3.2.spl --mode precert --max-messages all
+splunk-appinspect inspect dist/TA-missioncontrol-inventory-1.3.3.spl --mode precert --max-messages all
 ```
 
